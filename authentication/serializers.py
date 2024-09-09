@@ -120,7 +120,7 @@ class PassengerProfileSerializer(serializers.ModelSerializer):
 # Serializer para o perfil motorista.
 class DriverProfileSerializer(serializers.ModelSerializer):
     class Meta:
-        model = PassengerProfile
+        model = DriverProfile
         fields = '__all__'
 
 # Serializer para o login
@@ -173,13 +173,28 @@ class LoginSerializer(serializers.Serializer):
 # Serializer para requisição de redefinição de senha
 class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField(max_length=255)
+    user_type = serializers.ChoiceField(choices=[('passenger', 'Passenger'), ('driver', 'Driver')])
 
     class Meta:
-        fields = ['email']
+        fields = ['email', 'user_type']
 
     def validate(self, attrs):
         
         email = attrs.get('email')
+        user_type = attrs.get('user_type')
+        
+        # Verifica se o email está associado a um usuário do tipo correto
+        if user_type == 'driver':
+            if not User.objects.filter(email=email, is_driver=True).exists():
+                raise serializers.ValidationError("Driver with this email does not exist.")
+            user = User.objects.get(email=email, is_driver=True)
+        elif user_type == 'passenger':
+            if not User.objects.filter(email=email, is_passenger=True).exists():
+                raise serializers.ValidationError("Passenger with this email does not exist.")
+            user = User.objects.get(email=email, is_passenger=True)
+        else:
+            raise serializers.ValidationError("Invalid user type.")
+        
         if User.objects.filter(email=email).exists():
             user= User.objects.get(email=email)
             uidb64=urlsafe_base64_encode(smart_bytes(user.id))
