@@ -53,7 +53,7 @@ urlpatterns = [
     path('driver-location/', UpdateDriverLocationView.as_view(), name='update-driver-location'),
     
     # URL para alternar status online/offline
-    path('driver/toggle-online-status/<int:pk>/', ToggleOnlineStatusView.as_view(), name='toggle-online-status'),
+    path('driver/toggle-online-status/<int:user_id>/', ToggleOnlineStatusView.as_view(), name='toggle-online-status'),
     
     # URL para aceitar corrida
     path('ride/accept/<int:pk>/', AcceptRideRequestView.as_view(), name='accept-ride'),
