@@ -127,6 +127,7 @@ class DriverProfileSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     is_passenger = serializers.BooleanField(read_only=True)
     is_driver = serializers.BooleanField(read_only=True)
+    user_id = serializers.IntegerField(read_only=True)
     email = serializers.EmailField(max_length=155, min_length=6)
     password=serializers.CharField(max_length=68, write_only=True)
     full_name=serializers.CharField(max_length=255, read_only=True)
@@ -135,7 +136,7 @@ class LoginSerializer(serializers.Serializer):
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'full_name', 'access_token', 'refresh_token', 'is_driver', 'is_passenger']
+        fields = ['user_id', 'email', 'password', 'full_name', 'access_token', 'refresh_token', 'is_driver', 'is_passenger']
 
     def validate(self, attrs):
         email = attrs.get('email')
@@ -164,6 +165,7 @@ class LoginSerializer(serializers.Serializer):
         return {
             "is_passenger": user.is_passenger,
             "is_driver": user.is_driver,
+            "user_id": user.id,
             'email':user.email,
             'full_name':user.get_full_name,
             "access_token":str(tokens.get('access')),
@@ -337,6 +339,11 @@ class ToggleOnlineStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = DriverProfile
         fields = ['is_online']
+
+    def update(self, instance, validated_data):
+        instance.is_online = validated_data.get('is_online', instance.is_online)
+        instance.save()
+        return instance
 
 # Cancelamento de corrida
 class CancelRideRequestSerializer(serializers.ModelSerializer):

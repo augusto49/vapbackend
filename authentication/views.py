@@ -26,6 +26,7 @@ from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from django.shortcuts import get_object_or_404
 
 # View para registro de passageiros.
 class PassengerRegisterView(GenericAPIView):
@@ -302,9 +303,13 @@ class CancelRideByPassengerView(GenericAPIView):
 
 # View para status online e off.
 class ToggleOnlineStatusView(GenericAPIView):
-    queryset = DriverProfile.objects.all()
     serializer_class = ToggleOnlineStatusSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        user_id = self.kwargs.get('user_id')
+        driver_profile = get_object_or_404(DriverProfile, user_id=user_id)
+        return driver_profile
 
     def patch(self, request, *args, **kwargs):
         driver_profile = self.get_object()
@@ -314,7 +319,10 @@ class ToggleOnlineStatusView(GenericAPIView):
         serializer = self.get_serializer(driver_profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        print("Status online atualizado com sucesso.")
+        print(f"DriverProfile before update: {driver_profile}")
+        print(f"Request data: {request.data}")
+        print(f"DriverProfile after update: {driver_profile}")
+
         return Response({"message": "Status online atualizado com sucesso."}, status=status.HTTP_200_OK)
 
 # View para cancelar corrida motorista.
