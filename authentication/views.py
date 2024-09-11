@@ -1,3 +1,4 @@
+from datetime import timezone
 from .models import DriverLocation, RideRequest, User, PassengerProfile, DriverProfile
 from django.shortcuts import render
 from .utils import assign_nearest_driver, calculate_price, haversine_distance, send_generated_otp_to_email
@@ -12,6 +13,7 @@ from .serializers import (
     CancelRideRequestSerializer,
     DriverLocationSerializer,
     DriverProfileSerializer,
+    DriverStatusSerializer,
     PassengerProfileSerializer,
     PassengerRegisterSerializer,
     DriverRegisterSerializer,
@@ -191,14 +193,42 @@ class DriverProfileView(GenericAPIView):
 
 # View para logout.
 class LogoutApiView(GenericAPIView):
-    serializer_class=LogoutUserSerializer
+    serializer_class = LogoutUserSerializer
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        serializer=self.serializer_class(data=request.data)
+        user = request.user  # Obtém o usuário logado
+
+        # Verificar se o motorista está online e se há uma corrida em andamento
+        if user.is_driver:
+            # Verificar se há uma corrida em andamento
+            ongoing_rides = RideRequest.objects.filter(driver=user, status='accepted')
+            if ongoing_rides.exists():
+                return Response(
+                    {"error": "Você não pode fazer logout enquanto há uma corrida em andamento."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Atualizar o status do motorista para offline, se necessário
+            driver_profile = get_object_or_404(DriverProfile, user=user)
+            if driver_profile.is_online:
+                driver_profile.is_online = False
+                driver_profile.save()
+                message = "O status do motorista foi atualizado para offline."
+            else:
+                message = "O motorista já está offline."
+        else:
+            message = "Logout realizado com sucesso."
+
+        # Validação do serializer de token
+        serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+
+        return Response(
+            {"message": "Logout realizado com sucesso.", "details": message},
+            status=status.HTTP_204_NO_CONTENT
+        )
 
 # Solicitação de corrida
 class CreateRideRequestView(GenericAPIView):
@@ -213,19 +243,22 @@ class CreateRideRequestView(GenericAPIView):
         serializer.is_valid(raise_exception=True)
         ride_request = serializer.save(passenger=passenger)
 
-        # Calcular a distância usando Haversine
-        distance = haversine_distance(
-            ride_request.start_location.y, ride_request.start_location.x,
-            ride_request.end_location.y, ride_request.end_location.x
-        )
+        try:
+            # Calcular a distância usando Haversine
+            distance = haversine_distance(
+                ride_request.start_location.y, ride_request.start_location.x,
+                ride_request.end_location.y, ride_request.end_location.x
+            )
 
-        # Calcular o preço da corrida
-        price = calculate_price(distance)
+            # Calcular o preço da corrida
+            price = calculate_price(distance)
 
-        # Atualizar a solicitação de corrida com a distância e o preço
-        ride_request.distance = distance
-        ride_request.price = price
-        ride_request.save()
+            # Atualizar a solicitação de corrida com a distância e o preço
+            ride_request.distance = distance
+            ride_request.price = price
+            ride_request.save()
+        except Exception as e:
+            return Response({"error": "Erro ao calcular distância ou preço: {}".format(str(e))}, status=status.HTTP_400_BAD_REQUEST)
 
         # Vincular o motorista mais próximo
         driver_assigned = assign_nearest_driver(ride_request)
@@ -238,7 +271,7 @@ class CreateRideRequestView(GenericAPIView):
         ride_request.save()
 
         response_data = {
-            "message": "Ride request created.",
+            "message": "Solicitação de corrida criada.",
             "ride_id": ride_request.id,
             "distance": ride_request.distance,
             "price": ride_request.price,
@@ -246,7 +279,7 @@ class CreateRideRequestView(GenericAPIView):
         }
 
         if driver_assigned:
-            response_data["driver_id"] = ride_request.driver.id
+            response_data["driver_id"] = driver_assigned.id
 
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -280,9 +313,14 @@ class UpdateDriverLocationView(GenericAPIView):
         serializer.is_valid(raise_exception=True)
         location = serializer.validated_data['location']
         
-        # Atualiza ou cria a localização do motorista
-        DriverLocation.objects.update_or_create(driver=driver, defaults={'location': location})
-        
+        # Buscar a localização existente do motorista
+        driver_location, created = DriverLocation.objects.get_or_create(driver=driver)
+
+        # Verificar se a nova localização é diferente da atual
+        if driver_location.location != location:
+            driver_location.location = location
+            driver_location.save()
+
         return Response({"message": "Localização atualizada com sucesso"}, status=status.HTTP_200_OK)
 
 # View para cancelar a corrida passageiro.
@@ -308,13 +346,19 @@ class ToggleOnlineStatusView(GenericAPIView):
 
     def get_object(self):
         user_id = self.kwargs.get('user_id')
+        # Certifique-se de que user_id é de um User
         driver_profile = get_object_or_404(DriverProfile, user_id=user_id)
         return driver_profile
 
     def patch(self, request, *args, **kwargs):
         driver_profile = self.get_object()
+
         if not request.user.is_driver:
             return Response({"error": "Apenas motoristas podem alterar o status online."}, status=status.HTTP_403_FORBIDDEN)
+
+        # Verificar se o motorista está em uma corrida antes de permitir a mudança de status
+        if RideRequest.objects.filter(driver=driver_profile.user, status='accepted').exists():
+            return Response({"error": "Você não pode alterar o status enquanto está em uma corrida."}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer = self.get_serializer(driver_profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -325,6 +369,19 @@ class ToggleOnlineStatusView(GenericAPIView):
 
         return Response({"message": "Status online atualizado com sucesso."}, status=status.HTTP_200_OK)
 
+# View para sicronizar status.
+class DriverStatusView(GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = DriverStatusSerializer
+
+    def get(self, request, user_id):
+        if not request.user.is_driver:
+            return Response({"error": "Não autorizado"}, status=status.HTTP_403_FORBIDDEN)
+
+        driver_profile = get_object_or_404(DriverProfile, user=request.user)
+        serializer = self.serializer_class(driver_profile)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 # View para cancelar corrida motorista.
 class CancelRideByDriverView(GenericAPIView):
     queryset = RideRequest.objects.all()
@@ -334,9 +391,15 @@ class CancelRideByDriverView(GenericAPIView):
     def patch(self, request, *args, **kwargs):
         ride_request = self.get_object()
         if ride_request.driver != request.user:
-            return Response({"error": "Only the driver can cancel this ride."}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"error": "Apenas o motorista pode cancelar esta corrida."}, status=status.HTTP_403_FORBIDDEN)
+        
         serializer = self.get_serializer(ride_request, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
+        
+        # Registrar o cancelamento com motivo e timestamp
         serializer.cancel_by_driver()
-        print("Cencelado pelo motorista.")
-        return Response({"message": "Ride canceled by driver."}, status=status.HTTP_200_OK)
+        ride_request.canceled_at = timezone.now()
+        ride_request.cancel_reason = request.data.get('cancel_reason', 'Sem motivo informado')
+        ride_request.save()
+
+        return Response({"message": "Corrida cancelada pelo motorista."}, status=status.HTTP_200_OK)
