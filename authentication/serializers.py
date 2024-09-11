@@ -299,6 +299,9 @@ class RideRequestSerializer(serializers.ModelSerializer):
         start_location_data = self.initial_data.get('start_location', {})
         end_location_data = self.initial_data.get('end_location', {})
 
+        if not start_location_data or not end_location_data:
+            raise serializers.ValidationError("Start and End locations are required.")
+
         start_location = Point(start_location_data['coordinates'][0], start_location_data['coordinates'][1], srid=4326)
         end_location = Point(end_location_data['coordinates'][0], end_location_data['coordinates'][1], srid=4326)
 
@@ -323,6 +326,8 @@ class AcceptRideRequestSerializer(serializers.ModelSerializer):
         return attrs
 
     def accept(self, driver):
+        if not driver.is_online:
+            raise serializers.ValidationError("Driver must be online to accept a ride.")
         self.instance.driver = driver
         self.instance.status = 'accepted'
         self.instance.save()
@@ -344,6 +349,12 @@ class ToggleOnlineStatusSerializer(serializers.ModelSerializer):
         instance.is_online = validated_data.get('is_online', instance.is_online)
         instance.save()
         return instance
+
+#Sicronizar status
+class DriverStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DriverProfile
+        fields = ['is_online']
 
 # Cancelamento de corrida
 class CancelRideRequestSerializer(serializers.ModelSerializer):

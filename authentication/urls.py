@@ -6,6 +6,7 @@ from .views import (
         CreateRideRequestView,
         DriverLoginView,
         DriverProfileView,
+        DriverStatusView,
         PassengerProfileView,
         PassengerRegisterView,
         DriverRegisterView,
@@ -54,6 +55,7 @@ urlpatterns = [
     
     # URL para alternar status online/offline
     path('driver/toggle-online-status/<int:user_id>/', ToggleOnlineStatusView.as_view(), name='toggle-online-status'),
+    path('driver/driver-status/<int:user_id>/', DriverStatusView.as_view(), name='driver-status'),
     
     # URL para aceitar corrida
     path('ride/accept/<int:pk>/', AcceptRideRequestView.as_view(), name='accept-ride'),
