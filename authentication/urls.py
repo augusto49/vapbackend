@@ -51,16 +51,18 @@ urlpatterns = [
     
     # URLs para solicitação de corrida e localização do motorista
     path('ride-request/', CreateRideRequestView.as_view(), name='create-ride-request'),
-    path('driver-location/', UpdateDriverLocationView.as_view(), name='update-driver-location'),
+    
+    # URL atualizar localização do motorista.
+    path('driver/location/<int:user_id>/', UpdateDriverLocationView.as_view(), name='update-driver-location'),
     
     # URL para alternar status online/offline
     path('driver/toggle-online-status/<int:user_id>/', ToggleOnlineStatusView.as_view(), name='toggle-online-status'),
     path('driver/driver-status/<int:user_id>/', DriverStatusView.as_view(), name='driver-status'),
     
     # URL para aceitar corrida
-    path('ride/accept/<int:pk>/', AcceptRideRequestView.as_view(), name='accept-ride'),
+    path('ride/accept/<int:ride_id>/', AcceptRideRequestView.as_view(), name='accept-ride'),
     
     # URLs para cancelar corridas
-    path('ride/cancel/passenger/<int:pk>/', CancelRideByPassengerView.as_view(), name='cancel-ride-passenger'),
-    path('ride/cancel/driver/<int:pk>/', CancelRideByDriverView.as_view(), name='cancel-ride-driver'),
+    path('ride/cancel/passenger/<int:user_id>/', CancelRideByPassengerView.as_view(), name='cancel-ride-passenger'),
+    path('ride/cancel/driver/<int:user_id>/', CancelRideByDriverView.as_view(), name='cancel-ride-driver'),
 ]

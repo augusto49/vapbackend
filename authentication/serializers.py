@@ -335,9 +335,14 @@ class AcceptRideRequestSerializer(serializers.ModelSerializer):
 # Localização do motorista para solicitação
 class DriverLocationSerializer(serializers.ModelSerializer):
     class Meta:
-        model = DriverLocation
-        fields = ['driver', 'location', 'updated_at']
-        read_only_fields = ['driver', 'updated_at']
+        model = DriverProfile
+        fields = ['latitude', 'longitude']
+
+    def update(self, instance, validated_data):
+        instance.latitude = validated_data.get('latitude', instance.latitude)
+        instance.longitude = validated_data.get('longitude', instance.longitude)
+        instance.save()
+        return instance
 
 # Botão online e off do motorista
 class ToggleOnlineStatusSerializer(serializers.ModelSerializer):
