@@ -62,6 +62,8 @@ class PassengerProfile(models.Model):
 class DriverProfile(models.Model):
     is_active = models.BooleanField(default=True)
     is_online = models.BooleanField(default=False)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
     STATUS_CHOICES = [
         ('pending', 'Pendente'),
         ('approved', 'Aprovado'),

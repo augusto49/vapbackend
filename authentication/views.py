@@ -305,23 +305,26 @@ class AcceptRideRequestView(GenericAPIView):
 
 # View para atualizar o local do motorista.
 class UpdateDriverLocationView(GenericAPIView):
+    serializer_class = DriverLocationSerializer
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
-        driver = request.user
-        serializer = DriverLocationSerializer(data=request.data)
+    def patch(self, request, *args, **kwargs):
+        # Obtenha o user_id da URL
+        user_id = kwargs.get('user_id')
+
+        # Verifique se o user_id corresponde ao motorista autenticado
+        if request.user.id != user_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+
+        # Obtenha o perfil do motorista associado ao user_id
+        driver_profile = get_object_or_404(DriverProfile, user_id=user_id)
+
+        # Atualize a localização do motorista - passe a instância do driver_profile aqui
+        serializer = self.get_serializer(driver_profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        location = serializer.validated_data['location']
-        
-        # Buscar a localização existente do motorista
-        driver_location, created = DriverLocation.objects.get_or_create(driver=driver)
+        serializer.save()
 
-        # Verificar se a nova localização é diferente da atual
-        if driver_location.location != location:
-            driver_location.location = location
-            driver_location.save()
-
-        return Response({"message": "Localização atualizada com sucesso"}, status=status.HTTP_200_OK)
+        return Response({"message": "Location updated successfully."}, status=status.HTTP_200_OK)
 
 # View para cancelar a corrida passageiro.
 class CancelRideByPassengerView(GenericAPIView):
