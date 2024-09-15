@@ -191,8 +191,8 @@ class DriverProfileView(GenericAPIView):
         except DriverProfile.DoesNotExist:
             return Response({"detail": "Perfil não encontrado."}, status=status.HTTP_404_NOT_FOUND)
 
-# View para logout.
-class LogoutApiView(GenericAPIView):
+# View para logout motorista.
+class DriverLogoutApiView(GenericAPIView):
     serializer_class = LogoutUserSerializer
     permission_classes = [IsAuthenticated]
 
@@ -230,6 +230,17 @@ class LogoutApiView(GenericAPIView):
             status=status.HTTP_204_NO_CONTENT
         )
 
+# View para logout Passageiro.
+class PassengerLogoutApiView(GenericAPIView):
+    serializer_class=LogoutUserSerializer
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer=self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
 # Solicitação de corrida
 class CreateRideRequestView(GenericAPIView):
     queryset = RideRequest.objects.all()
@@ -302,7 +313,7 @@ class AcceptRideRequestView(GenericAPIView):
         serializer.accept(request.user)
         print("Corrida aceita")
         return Response({"message": "Ride accepted successfully."}, status=status.HTTP_200_OK)
-
+    
 # View para atualizar o local do motorista.
 class UpdateDriverLocationView(GenericAPIView):
     serializer_class = DriverLocationSerializer
