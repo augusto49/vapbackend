@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
         AcceptRideRequestView,
+        CalculateRouteView,
         CancelRideByDriverView,
         CancelRideByPassengerView,
         CreateRideRequestView,
@@ -41,7 +42,9 @@ urlpatterns = [
     path('passenger/profile/', PassengerProfileView.as_view(), name='passenger-profile'),
     # URL para Passageiro.
     path('passenger/logout/', PassengerLogoutApiView.as_view(), name='passenger_logout'),
-    # URLs para solicitação de corrida e localização do motorista
+    # URL para calcular e rota.
+    path('passenger/calculate-route/', CalculateRouteView.as_view(), name='calculate_route'),
+    # URLs para solicitação de corrida.
     path('passenger/ride-request/', CreateRideRequestView.as_view(), name='create-ride-request'),
     # URLs para cancelar corridas
     path('ride/cancel/passenger/<int:user_id>/', CancelRideByPassengerView.as_view(), name='cancel-ride-passenger'),

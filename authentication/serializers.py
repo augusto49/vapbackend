@@ -268,42 +268,63 @@ class LogoutUserSerializer(serializers.Serializer):
         except TokenError:
             return self.fail('bad_token')
 
+# Botão online e off do motorista
+class ToggleOnlineStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DriverProfile
+        fields = ['is_online']
+
+    def update(self, instance, validated_data):
+        instance.is_online = validated_data.get('is_online', instance.is_online)
+        instance.save()
+        return instance
+
+#Sicronizar status
+class DriverStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DriverProfile
+        fields = ['is_online']
+
+# Definir rota.
+class RouteRequestSerializer(serializers.Serializer):
+    origin_lat = serializers.FloatField()
+    origin_lng = serializers.FloatField()
+    destination_lat = serializers.FloatField()
+    destination_lng = serializers.FloatField()
+
+    def validate(self, data):
+        if data['origin_lat'] == data['destination_lat'] and data['origin_lng'] == data['destination_lng']:
+            raise serializers.ValidationError("A origem e o destino não podem ser iguais.")
+        return data
+
 # Solicitação de corrida
 class RideRequestSerializer(serializers.ModelSerializer):
-    start_location = serializers.SerializerMethodField()
-    end_location = serializers.SerializerMethodField()
-    distance = serializers.FloatField(read_only=True)
-    price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    user_id = serializers.IntegerField(source='passenger.id', read_only=True)
+    start_location = serializers.DictField(child=serializers.FloatField(), write_only=True)
+    end_location = serializers.DictField(child=serializers.FloatField(), write_only=True)
+    distance = serializers.FloatField(write_only=True)  # Recebido do front-end
+    price = serializers.DecimalField(max_digits=10, decimal_places=2, write_only=True)  # Recebido do front-end
+    duration = serializers.FloatField(write_only=True)  # Recebido do front-end
 
     class Meta:
         model = RideRequest
-        fields = ['start_location', 'end_location', 'distance', 'price']
+        fields = ['start_location', 'end_location', 'distance', 'price', 'duration', 'user_id']
 
-    def get_start_location(self, obj):
-        if obj.start_location:
-            return {
-                'type': 'Point',
-                'coordinates': [obj.start_location.x, obj.start_location.y]
-            }
-        return None
-
-    def get_end_location(self, obj):
-        if obj.end_location:
-            return {
-                'type': 'Point',
-                'coordinates': [obj.end_location.x, obj.end_location.y]
-            }
-        return None
-
-    def create(self, validated_data):
-        start_location_data = self.initial_data.get('start_location', {})
-        end_location_data = self.initial_data.get('end_location', {})
-
-        if not start_location_data or not end_location_data:
+    def validate(self, data):
+        if not data.get('start_location') or not data.get('end_location'):
             raise serializers.ValidationError("Start and End locations are required.")
 
+        if 'distance' not in data or 'price' not in data or 'duration' not in data:
+            raise serializers.ValidationError("Distance, price, and duration are required.")
+
+        return data
+
+    def create(self, validated_data):
+        start_location_data = validated_data.pop('start_location')
+        end_location_data = validated_data.pop('end_location')
+
         start_location = Point(start_location_data['coordinates'][0], start_location_data['coordinates'][1], srid=4326)
-        end_location = Point(end_location_data['coordinates'][0], end_location_data['coordinates'][1], srid=4326)
+        end_location = Point(end_location_data['coordinates'][0], start_location_data['coordinates'][1], srid=4326)
 
         ride_request = RideRequest.objects.create(
             start_location=start_location,
@@ -334,32 +355,22 @@ class AcceptRideRequestSerializer(serializers.ModelSerializer):
 
 # Localização do motorista para solicitação
 class DriverLocationSerializer(serializers.ModelSerializer):
+    latitude = serializers.FloatField(write_only=True)
+    longitude = serializers.FloatField(write_only=True)
+    
     class Meta:
-        model = DriverProfile
+        model = DriverLocation
         fields = ['latitude', 'longitude']
-
+    
     def update(self, instance, validated_data):
-        instance.latitude = validated_data.get('latitude', instance.latitude)
-        instance.longitude = validated_data.get('longitude', instance.longitude)
-        instance.save()
+        latitude = validated_data.get('latitude')
+        longitude = validated_data.get('longitude')
+        
+        if latitude is not None and longitude is not None:
+            instance.location = Point(longitude, latitude, srid=4326)
+            instance.save()
+        
         return instance
-
-# Botão online e off do motorista
-class ToggleOnlineStatusSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DriverProfile
-        fields = ['is_online']
-
-    def update(self, instance, validated_data):
-        instance.is_online = validated_data.get('is_online', instance.is_online)
-        instance.save()
-        return instance
-
-#Sicronizar status
-class DriverStatusSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DriverProfile
-        fields = ['is_online']
 
 # Cancelamento de corrida
 class CancelRideRequestSerializer(serializers.ModelSerializer):

@@ -1,7 +1,7 @@
 from datetime import timezone
 from .models import DriverLocation, RideRequest, User, PassengerProfile, DriverProfile
 from django.shortcuts import render
-from .utils import assign_nearest_driver, calculate_price, haversine_distance, send_generated_otp_to_email
+from .utils import assign_nearest_driver, calculate_price, get_route_from_google_maps, send_generated_otp_to_email
 from .models import OneTimePassword
 from django.utils.http import urlsafe_base64_decode
 from django.utils.encoding import smart_str, DjangoUnicodeDecodeError
@@ -19,7 +19,8 @@ from .serializers import (
     DriverRegisterSerializer,
     LoginSerializer, 
     PasswordResetRequestSerializer,
-    RideRequestSerializer, 
+    RideRequestSerializer,
+    RouteRequestSerializer, 
     SetNewPasswordSerializer, 
     LogoutUserSerializer,
     ToggleOnlineStatusSerializer
@@ -240,6 +241,43 @@ class PassengerLogoutApiView(GenericAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+##########################
+# View para calcular rota.
+class CalculateRouteView(GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = RouteRequestSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            origin = {
+                'lat': serializer.validated_data['origin_lat'],
+                'lng': serializer.validated_data['origin_lng']
+            }
+            destination = {
+                'lat': serializer.validated_data['destination_lat'],
+                'lng': serializer.validated_data['destination_lng']
+            }
+
+            try:
+                # Chama a função que interage com a API do Google Maps
+                route_info = get_route_from_google_maps(origin, destination)
+                distance = route_info['distance_km']
+                duration = route_info['duration_minutes']
+                price = calculate_price(distance)
+
+                return Response({
+                    "distance_km": f"{distance:.2f}",
+                    "duration_minutes": f"{duration:.2f}",
+                    "price": f"R$ {price:.2f}",
+                    "route": route_info['route']
+                }, status=status.HTTP_200_OK)
+
+            except Exception as e:
+                return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 # Solicitação de corrida
 class CreateRideRequestView(GenericAPIView):
@@ -250,26 +288,20 @@ class CreateRideRequestView(GenericAPIView):
     def post(self, request, *args, **kwargs):
         passenger = request.user
         data = request.data
+
+        # Dados que o passageiro já calculou e enviou
+        distance = data.get('distance')
+        duration = data.get('duration')
+        price = data.get('price')
+
+        # Verificação básica dos campos necessários
+        if not distance or not price:
+            return Response({"error": "Os campos de distância e preço são obrigatórios."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Criação da solicitação de corrida
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
-        ride_request = serializer.save(passenger=passenger)
-
-        try:
-            # Calcular a distância usando Haversine
-            distance = haversine_distance(
-                ride_request.start_location.y, ride_request.start_location.x,
-                ride_request.end_location.y, ride_request.end_location.x
-            )
-
-            # Calcular o preço da corrida
-            price = calculate_price(distance)
-
-            # Atualizar a solicitação de corrida com a distância e o preço
-            ride_request.distance = distance
-            ride_request.price = price
-            ride_request.save()
-        except Exception as e:
-            return Response({"error": "Erro ao calcular distância ou preço: {}".format(str(e))}, status=status.HTTP_400_BAD_REQUEST)
+        ride_request = serializer.save(passenger=passenger, distance=distance, price=price)
 
         # Vincular o motorista mais próximo
         driver_assigned = assign_nearest_driver(ride_request)
@@ -286,7 +318,9 @@ class CreateRideRequestView(GenericAPIView):
             "ride_id": ride_request.id,
             "distance": ride_request.distance,
             "price": ride_request.price,
-            "status": ride_request.status
+            "duration": duration,
+            "status": ride_request.status,
+            "user_id": passenger.id,
         }
 
         if driver_assigned:
@@ -327,11 +361,11 @@ class UpdateDriverLocationView(GenericAPIView):
         if request.user.id != user_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
 
-        # Obtenha o perfil do motorista associado ao user_id
-        driver_profile = get_object_or_404(DriverProfile, user_id=user_id)
-
-        # Atualize a localização do motorista - passe a instância do driver_profile aqui
-        serializer = self.get_serializer(driver_profile, data=request.data, partial=True)
+        # Obtenha ou crie o DriverLocation para o motorista
+        driver_location, created = DriverLocation.objects.get_or_create(driver=request.user)
+        
+        # Atualize a localização do motorista
+        serializer = self.get_serializer(driver_location, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
