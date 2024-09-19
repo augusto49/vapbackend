@@ -13,6 +13,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Take environment variables from .env file
 environ.Env.read_env(BASE_DIR / '.env')
 
+# Adiciona a chave da API do Google Maps às configurações
+GOOGLE_MAPS_API_KEY = env('GOOGLE_MAPS_API_KEY')
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env('SECRET_KEY')
 
